@@ -1,0 +1,22 @@
+# Credenciales - NUNCA subir a GitHub
+config.py
+tiktok_token.json
+uploaded.json
+
+# Carpeta de descargas
+downloads/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
