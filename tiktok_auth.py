@@ -5,6 +5,7 @@ Guarda el access_token en tiktok_token.json.
 """
 import requests
 import json
+import time
 import webbrowser
 from urllib.parse import urlencode, urlparse, parse_qs
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -70,11 +71,13 @@ def main():
         print(f"[TikTok Auth] Error: {token_data}")
         return
 
+    token_data["saved_at"] = int(time.time())
     with open(TOKEN_FILE, "w") as f:
         json.dump(token_data, f, indent=2)
 
     print(f"[TikTok Auth] Token guardado en {TOKEN_FILE}")
     print(f"Access token: {token_data['access_token'][:20]}...")
+    print(f"Expira en: {token_data.get('expires_in', '?')} segundos")
 
 if __name__ == "__main__":
     main()

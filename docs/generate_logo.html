@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Generar logo flax</title>
+<style>
+  body { font-family: Arial; text-align: center; padding: 20px; background: #f0f0f0; }
+  canvas { border: 2px solid #333; margin: 20px; background: white; }
+  button { padding: 15px 30px; font-size: 16px; cursor: pointer; background: #fe2c55; color: white; border: none; border-radius: 5px; }
+  button:hover { background: #e0244a; }
+</style>
+</head>
+<body>
+<h1>Logo para flax (1024x1024)</h1>
+<canvas id="logo" width="1024" height="1024"></canvas>
+<br>
+<button onclick="downloadLogo()">Descargar logo PNG</button>
+
+<script>
+  const canvas = document.getElementById('logo');
+  const ctx = canvas.getContext('2d');
+
+  // Fondo degradado
+  const gradient = ctx.createLinearGradient(0, 0, 1024, 1024);
+  gradient.addColorStop(0, '#fe2c55');
+  gradient.addColorStop(1, '#25f4ee');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 1024, 1024);
+
+  // Texto "f"
+  ctx.fillStyle = 'white';
+  ctx.font = 'bold 700px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('f', 512, 512);
+
+  function downloadLogo() {
+    const link = document.createElement('a');
+    link.download = 'flax-logo.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  }
+</script>
+</body>
+</html>
