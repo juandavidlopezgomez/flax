@@ -1,6 +1,8 @@
 # Credenciales - NUNCA subir a GitHub
 config.py
 tiktok_token.json
+tiktok_cookies.txt
+kick_token.json
 uploaded.json
 
 # Carpeta de descargas

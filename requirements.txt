@@ -1,5 +1,6 @@
 requests
-yt-dlp
-flask
 curl_cffi
 imageio-ffmpeg
+tiktok-uploader
+yt-dlp
+flask

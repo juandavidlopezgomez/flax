@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "flax-test-download",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["main.py", "--dry-run", "--limit", "1", "--keep-files"],
+      "port": 0
+    },
+    {
+      "name": "flax-upload-once-unofficial",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["main.py", "--mode", "unofficial", "--limit", "1"],
+      "port": 0
+    },
+    {
+      "name": "flax-loop-unofficial",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["main.py", "--loop", "--mode", "unofficial"],
+      "port": 0
+    },
+    {
+      "name": "flax-upload-once-official",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["main.py", "--mode", "official", "--limit", "1"],
+      "port": 0
+    }
+  ]
+}
