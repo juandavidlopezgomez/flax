@@ -1,19 +1,24 @@
 """
-Uploader de TikTok 100% automatico usando Playwright.
-Maneja los modales nuevos de TikTok (unoriginal content, etc.) automaticamente.
+Uploader de TikTok 100% automatico usando undetected-chromedriver.
+Abre una ventana de Chrome real (minimizable) para evadir la deteccion anti-bot
+de TikTok en modo headless.
+
+Ejecutar DESDE POWERSHELL/CMD de Windows, no desde otros entornos.
 """
 import os
-import re
 import time
-import json
-from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+import undetected_chromedriver as uc
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 COOKIES_FILE = "tiktok_cookies.txt"
 UPLOAD_URL = "https://www.tiktok.com/tiktokstudio/upload?from=upload"
 
 
 def parse_netscape_cookies(path):
-    """Convierte un cookies.txt (formato Netscape) a formato Playwright."""
+    """Convierte cookies.txt (Netscape) a formato Selenium."""
     cookies = []
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
@@ -24,81 +29,42 @@ def parse_netscape_cookies(path):
             if len(parts) < 7:
                 continue
             domain, _flag, path_, secure, expires, name, value = parts[:7]
-            try:
-                expires = int(expires)
-            except ValueError:
-                expires = -1
             cookie = {
                 "name": name,
                 "value": value,
-                "domain": domain,
+                "domain": domain.lstrip("."),
                 "path": path_,
                 "secure": secure.upper() == "TRUE",
-                "httpOnly": False,
-                "sameSite": "Lax",
             }
-            if expires > 0:
-                cookie["expires"] = expires
+            try:
+                exp = int(expires)
+                if exp > 0:
+                    cookie["expiry"] = exp
+            except ValueError:
+                pass
             cookies.append(cookie)
     return cookies
 
 
-def dismiss_modals(page):
-    """Cierra/remueve cualquier modal, overlay o tutorial que TikTok muestre."""
-    # 1. Remover overlays de react-joyride (tutorial guiado)
+def dismiss_overlays(driver):
+    """Remueve tutoriales y modales que bloquean interaccion."""
     try:
-        page.evaluate("""
-            () => {
-                document.querySelectorAll('#react-joyride-portal, [data-test-id="overlay"], .react-joyride__overlay, .react-joyride__spotlight, .react-joyride__tooltip').forEach(el => el.remove());
-                document.body.style.overflow = 'auto';
-            }
-        """)
-    except Exception:
-        pass
-
-    # 2. Intentar cerrar con botones de texto
-    selectors = [
-        'button:has-text("Continue")',
-        'button:has-text("Continuar")',
-        'button:has-text("Got it")',
-        'button:has-text("Entendido")',
-        'button:has-text("OK")',
-        'button:has-text("Allow")',
-        'button:has-text("Permitir")',
-        'button:has-text("Skip")',
-        'button:has-text("Omitir")',
-        'button:has-text("Saltar")',
-        'button:has-text("Cancel")',
-        'button[aria-label="Close"]',
-        'button[aria-label="Cerrar"]',
-        'button[aria-label="Skip"]',
-        'button.react-joyride__button',
-    ]
-    for sel in selectors:
-        try:
-            for btn in page.locator(sel).all():
-                try:
-                    if btn.is_visible(timeout=500):
-                        btn.click(timeout=1000)
-                        time.sleep(0.3)
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-    # 3. Remover modales genericos por CSS
-    try:
-        page.evaluate("""
-            () => {
-                document.querySelectorAll('[class*="TUXModal-overlay"], [role="presentation"][data-test-id="overlay"]').forEach(el => el.remove());
-            }
+        driver.execute_script("""
+            document.querySelectorAll(
+                '#react-joyride-portal, [data-test-id="overlay"], .react-joyride__overlay, ' +
+                '.react-joyride__spotlight, .react-joyride__tooltip, [class*="TUXModal-overlay"]'
+            ).forEach(el => el.remove());
         """)
     except Exception:
         pass
 
 
-def upload_to_tiktok(video_path, description=""):
-    """Sube un video a TikTok de forma 100% automatica."""
+def upload_to_tiktok(video_path, description="", headless=False):
+    """Sube un video a TikTok de forma 100% automatica.
+
+    headless=False (default) abre ventana visible de Chrome - TikTok NO bloquea.
+    headless=True abre sin ventana - TikTok puede throttlear la subida.
+    """
     if not os.path.exists(COOKIES_FILE):
         raise FileNotFoundError(f"Falta {COOKIES_FILE}")
 
@@ -109,153 +75,160 @@ def upload_to_tiktok(video_path, description=""):
     cookies = parse_netscape_cookies(COOKIES_FILE)
     tiktok_cookies = [c for c in cookies if "tiktok.com" in c["domain"]]
 
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(
-            headless=True,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
-            ],
-        )
-        context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                       "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            viewport={"width": 1366, "height": 900},
-            locale="es-ES",
-        )
-        context.add_cookies(tiktok_cookies)
-        page = context.new_page()
+    options = uc.ChromeOptions()
+    options.add_argument("--lang=es-ES")
+    options.add_argument("--window-size=1366,900")
+    options.add_argument("--start-minimized")
+    if headless:
+        options.add_argument("--headless=new")
 
-        try:
-            page.goto(UPLOAD_URL, wait_until="domcontentloaded", timeout=60000)
-            time.sleep(5)
+    driver = None
+    try:
+        driver = uc.Chrome(options=options, use_subprocess=True)
+        driver.set_page_load_timeout(60)
 
-            # Cerrar modales iniciales
-            dismiss_modals(page)
+        print("[TikTok] Cargando tiktok.com para setear cookies...")
+        driver.get("https://www.tiktok.com/")
+        time.sleep(3)
 
-            # 1. Subir archivo - el input esta oculto detras del boton "Seleccionar videos"
-            print("[TikTok] Cargando video en el input...")
-            # Esperamos que el DOM tenga el input (aunque este oculto)
-            page.wait_for_selector('input[type="file"]', state="attached", timeout=30000)
-            file_input = page.locator('input[type="file"]').first
-            file_input.set_input_files(abs_video)
-            print("[TikTok] Archivo cargado, esperando procesamiento...")
-            time.sleep(5)
-
-            # 2. Esperar a que aparezca el editor de descripcion
-            #    Hay varias formas en que TikTok lo renderiza; usamos multiples selectores
-            caption_sel = 'div[contenteditable="true"]'
-            page.wait_for_selector(caption_sel, timeout=120000)
-            time.sleep(3)
-
-            # Cerrar posibles modales
-            dismiss_modals(page)
-
-            # 3. Escribir descripcion (limpiamos primero)
-            print("[TikTok] Escribiendo descripcion...")
-            caption = page.locator(caption_sel).first
-            caption.click()
-            # Seleccionar todo y borrar
-            page.keyboard.press("Control+A")
-            page.keyboard.press("Delete")
-            time.sleep(0.5)
-
-            # Escribir char por char para que TikTok procese hashtags
-            for ch in description:
-                page.keyboard.type(ch)
-                time.sleep(0.02)
-            time.sleep(2)
-
-            # Cerrar sugerencia de menciones/hashtags si aparece
-            page.keyboard.press("Escape")
-            time.sleep(1)
-
-            # 4. Esperar a que termine de subir el video (barra de progreso)
-            print("[TikTok] Esperando a que termine la subida del video...")
-            for _ in range(60):  # hasta 5 minutos
-                time.sleep(5)
-                dismiss_modals(page)
-                # Si vemos el boton Post habilitado, ya esta
-                try:
-                    post_btn = page.locator(
-                        'button:has-text("Post"), button:has-text("Publicar")'
-                    ).first
-                    if post_btn.is_visible() and post_btn.is_enabled():
-                        break
-                except Exception:
-                    continue
-
-            # 5. Cerrar modales ANTES de click Post
-            dismiss_modals(page)
-            time.sleep(1)
-
-            # 6. Click en Post con multiples estrategias
-            print("[TikTok] Publicando...")
-            clicked = False
-            for attempt in range(5):
-                dismiss_modals(page)
-                try:
-                    post_btn = page.locator(
-                        'button:has-text("Post"), button:has-text("Publicar")'
-                    ).first
-                    post_btn.wait_for(state="visible", timeout=10000)
-                    # Intentar click normal
-                    try:
-                        post_btn.click(timeout=5000)
-                        clicked = True
-                        break
-                    except Exception:
-                        # Forzar click por JS si algo intercepta
-                        post_btn.evaluate("el => el.click()")
-                        clicked = True
-                        break
-                except Exception as e:
-                    print(f"[TikTok] Intento {attempt+1} fallo: {e}")
-                    time.sleep(2)
-
-            if not clicked:
-                print("[TikTok] No se pudo hacer click en Post")
-                page.screenshot(path="tiktok_error.png", full_page=True)
-                return False
-
-            # 7. Esperar confirmacion
-            print("[TikTok] Esperando confirmacion...")
-            time.sleep(8)
-
-            # Buscar indicadores de exito
-            success_indicators = [
-                'text=Your video is being uploaded',
-                'text=uploaded successfully',
-                'text=exito',
-                'text=subido',
-                'text=Manage posts',
-            ]
-            for ind in success_indicators:
-                try:
-                    if page.locator(ind).first.is_visible(timeout=2000):
-                        print(f"[TikTok] Exito detectado: {ind}")
-                        return True
-                except Exception:
-                    continue
-
-            # Si la URL cambio a /manage o similar, probablemente exito
-            if "upload" not in page.url:
-                print(f"[TikTok] URL cambio a {page.url}, asumiendo exito")
-                return True
-
-            print("[TikTok] Publicacion enviada (no se detecto confirmacion explicita)")
-            return True
-
-        except Exception as e:
-            print(f"[TikTok] Error: {e}")
+        for c in tiktok_cookies:
             try:
-                page.screenshot(path="tiktok_error.png", full_page=True)
-                print("[TikTok] Screenshot guardado en tiktok_error.png")
+                driver.add_cookie(c)
             except Exception:
                 pass
-            return False
-        finally:
+
+        print("[TikTok] Navegando a upload...")
+        driver.get(UPLOAD_URL)
+        time.sleep(8)
+        dismiss_overlays(driver)
+
+        print("[TikTok] Cargando video...")
+        file_input = WebDriverWait(driver, 30).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, 'input[type="file"]'))
+        )
+        file_input.send_keys(abs_video)
+        print("[TikTok] Video cargado.")
+        time.sleep(5)
+        dismiss_overlays(driver)
+
+        print("[TikTok] Buscando campo de descripcion...")
+        caption_el = WebDriverWait(driver, 60).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, 'div[contenteditable="true"]'))
+        )
+        time.sleep(2)
+        dismiss_overlays(driver)
+
+        driver.execute_script("arguments[0].click();", caption_el)
+        time.sleep(1)
+        caption_el.send_keys(Keys.CONTROL + "a")
+        caption_el.send_keys(Keys.DELETE)
+        time.sleep(0.5)
+
+        print("[TikTok] Escribiendo descripcion...")
+        for ch in description:
+            caption_el.send_keys(ch)
+            time.sleep(0.03)
+        time.sleep(2)
+        caption_el.send_keys(Keys.ESCAPE)
+        time.sleep(1)
+
+        print("[TikTok] Esperando a que termine la subida...")
+        last_progress = -1
+        stuck_count = 0
+        finished = False
+        for i in range(240):
+            time.sleep(5)
+            dismiss_overlays(driver)
+
             try:
-                browser.close()
+                progress = driver.execute_script("""
+                    const text = document.body.innerText;
+                    const m = text.match(/(\\d+(?:\\.\\d+)?)\\s*%/);
+                    return m ? parseFloat(m[1]) : null;
+                """)
+                if progress is not None:
+                    if progress != last_progress:
+                        print(f"[TikTok] Progreso: {progress}%")
+                        last_progress = progress
+                        stuck_count = 0
+                    else:
+                        stuck_count += 1
+
+                    if progress >= 100:
+                        print("[TikTok] 100% completado")
+                        time.sleep(8)
+                        finished = True
+                        break
+                else:
+                    if i > 5:
+                        print("[TikTok] Procesamiento finalizado")
+                        finished = True
+                        break
+            except Exception:
+                pass
+
+            if stuck_count > 96:
+                print(f"[TikTok] Atascado en {last_progress}%")
+                driver.save_screenshot("tiktok_stuck.png")
+                return False
+
+        if not finished:
+            print("[TikTok] Timeout esperando subida")
+            return False
+
+        dismiss_overlays(driver)
+        print("[TikTok] Publicando...")
+        for attempt in range(5):
+            dismiss_overlays(driver)
+            try:
+                buttons = driver.find_elements(By.TAG_NAME, "button")
+                post_btn = None
+                for btn in buttons:
+                    try:
+                        text = btn.text.strip().lower()
+                        if text in ("post", "publicar") and btn.is_enabled() and btn.is_displayed():
+                            post_btn = btn
+                            break
+                    except Exception:
+                        continue
+
+                if post_btn:
+                    driver.execute_script("arguments[0].click();", post_btn)
+                    print("[TikTok] Click en Post enviado")
+                    break
+            except Exception as e:
+                print(f"[TikTok] Intento {attempt+1}: {e}")
+            time.sleep(2)
+
+        time.sleep(15)
+        driver.save_screenshot("tiktok_after_post.png")
+        current_url = driver.current_url
+        print(f"[TikTok] URL final: {current_url}")
+
+        if "upload" not in current_url:
+            print("[TikTok] Publicacion confirmada")
+            return True
+
+        body_text = driver.find_element(By.TAG_NAME, "body").text.lower()
+        for kw in ["uploaded", "subido", "publicado", "manage posts", "administrar"]:
+            if kw in body_text:
+                print(f"[TikTok] Detectado: {kw}")
+                return True
+
+        print("[TikTok] Sin confirmacion clara. Revisa tiktok_after_post.png")
+        return False
+
+    except Exception as e:
+        print(f"[TikTok] Error: {e}")
+        if driver:
+            try:
+                driver.save_screenshot("tiktok_error.png")
+            except Exception:
+                pass
+        return False
+    finally:
+        if driver:
+            try:
+                driver.quit()
             except Exception:
                 pass

@@ -1,6 +1,6 @@
 requests
 curl_cffi
 imageio-ffmpeg
-tiktok-uploader
-yt-dlp
+undetected-chromedriver
+selenium
 flask
