@@ -78,13 +78,19 @@ def upload_to_tiktok(video_path, description="", headless=False):
     options = uc.ChromeOptions()
     options.add_argument("--lang=es-ES")
     options.add_argument("--window-size=1366,900")
-    options.add_argument("--start-minimized")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("--no-first-run")
+    options.add_argument("--disable-extensions")
+    # Perfil dedicado estable
+    profile_dir = os.path.abspath("chrome_profile")
+    os.makedirs(profile_dir, exist_ok=True)
+    options.add_argument(f"--user-data-dir={profile_dir}")
     if headless:
         options.add_argument("--headless=new")
 
     driver = None
     try:
-        driver = uc.Chrome(options=options, use_subprocess=True)
+        driver = uc.Chrome(options=options)
         driver.set_page_load_timeout(60)
 
         print("[TikTok] Cargando tiktok.com para setear cookies...")

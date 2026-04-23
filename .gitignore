@@ -8,6 +8,12 @@ uploaded.json
 # Carpeta de descargas
 downloads/
 
+# Perfil de Chrome persistente
+chrome_profile/
+
+# Screenshots de debug
+tiktok_*.png
+
 # Python
 __pycache__/
 *.pyc
