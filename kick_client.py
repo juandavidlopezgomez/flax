@@ -67,7 +67,7 @@ def get_new_clips():
 
 
 def download_clip(clip):
-    """Descarga un clip HLS y lo convierte a MP4 con ffmpeg."""
+    """Descarga un clip HLS, lo convierte a MP4 y lo comprime para TikTok."""
     os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
     clip_id = clip["id"]
     output_path = os.path.join(DOWNLOAD_FOLDER, f"{clip_id}.mp4")
@@ -83,19 +83,28 @@ def download_clip(clip):
 
     print(f"[Kick] Descargando {clip_id}: {clip.get('title', '')[:50]}")
 
-    # ffmpeg descarga el HLS y convierte a MP4
+    # ffmpeg: descarga HLS + recompresa a bitrate bajo + formato vertical 9:16
+    # Esto hace el archivo ~5-10MB (vs 30-60MB) para que TikTok lo acepte rapido
     cmd = [
         FFMPEG,
         "-y",
         "-loglevel", "error",
         "-i", video_url,
-        "-c", "copy",
-        "-bsf:a", "aac_adtstoasc",
+        "-vf", "scale='min(1080,iw)':-2",  # max 1080p, mantiene proporcion
+        "-c:v", "libx264",
+        "-preset", "fast",
+        "-crf", "26",                     # calidad balanceada
+        "-maxrate", "2500k",
+        "-bufsize", "5000k",
+        "-c:a", "aac",
+        "-b:a", "128k",
+        "-movflags", "+faststart",        # optimizado para upload web
+        "-pix_fmt", "yuv420p",
         output_path,
     ]
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
         if result.returncode != 0:
             print(f"[Kick] ffmpeg error: {result.stderr[:300]}")
             if os.path.exists(output_path):
